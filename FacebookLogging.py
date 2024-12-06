@@ -162,16 +162,10 @@ root.title("Facebook Messenger Bot")
 
 # Domyślne credentiale
 
-default_username = "hagiewu@o2.pl"
-default_password = "haslo123!"
+default_username = "example@gmail.com"
+default_password = "MySecurePassword"
 default_message_text = "Hello, this is a test message."
-default_url = "https://www.facebook.com/groups/422897979184540"
-
-
-# default_username = "example@gmail.com"
-# default_password = "MySecurePassword"
-# default_message_text = "Hello, this is a test message."
-# default_url = "https://www.facebook.com/groups/123456789/people"
+default_url = "https://www.facebook.com/groups/123456789/people"
 
 # Etykiety i pola tekstowe
 ttk.Label(root, text="Email:").grid(row=0, column=0, padx=10, pady=5)
