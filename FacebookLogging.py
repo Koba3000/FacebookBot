@@ -49,6 +49,11 @@ def start_bot(username, password, message_text, group_url):
         password_field.send_keys(Keys.RETURN)
         time.sleep(3)
 
+        # **Sprawdź, czy URL zawiera "authentication"**
+        if "authentication" in driver.current_url:
+            print("Dwuetapowa weryfikacja wykryta. Zamrażanie bota na minutę...")
+            time.sleep(60)
+
         # Sprawdzenie, czy logowanie zakończyło się sukcesem
         try:
             if "login" in driver.current_url:
