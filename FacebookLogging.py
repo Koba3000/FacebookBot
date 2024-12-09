@@ -134,7 +134,7 @@ def start_bot(username, password, message_text, group_url):
                     EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
                 )
                 message_box.send_keys(message_text)
-                # message_box.send_keys(Keys.RETURN)
+                message_box.send_keys(Keys.RETURN)
 
                 close_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Zamknij czat']"))
