@@ -11,6 +11,8 @@ from selenium.webdriver.chrome.options import Options
 
 import time
 
+# Globalna tablica na credentials
+accounts = []
 
 def validate_input(username, password, group_url):
     """Validate user input."""
@@ -188,51 +190,87 @@ def start_bot(username, password, message_text, group_url):
         print(f"Błąd: {e}")
 
 
+def add_account_frame(default_email=None, default_password=None):
+    """Dodaje nowe pola do wprowadzania loginu i hasła."""
+    new_frame = ttk.Frame(dynamic_accounts_frame)
+    new_frame.pack(fill="x", pady=5)
 
-# Tworzenie GUI
+    ttk.Label(new_frame, text="Email:").grid(row=0, column=0, padx=5, pady=5)
+    email_entry = ttk.Entry(new_frame, width=30)
+    if default_email:
+        email_entry.insert(0, default_email)
+    email_entry.grid(row=0, column=1, padx=5, pady=5)
+
+    ttk.Label(new_frame, text="Password:").grid(row=0, column=2, padx=5, pady=5)
+    password_entry = ttk.Entry(new_frame, width=30, show="*")
+    if default_password:
+        password_entry.insert(0, default_password)
+    password_entry.grid(row=0, column=3, padx=5, pady=5)
+
+    def save_account():
+        """Zapisuje dane konta do globalnej tablicy."""
+        email = email_entry.get()
+        password = password_entry.get()
+        if email and password:
+            accounts.append({'email': email, 'password': password})
+            email_entry.config(state="disabled")
+            password_entry.config(state="disabled")
+            save_button.config(state="disabled")
+        else:
+            messagebox.showwarning("Błąd", "Wprowadź zarówno email, jak i hasło.")
+
+    save_button = ttk.Button(new_frame, text="Zapisz konto", command=save_account)
+    save_button.grid(row=0, column=4, padx=5, pady=5)
+
+
+# GUI główne
 root = tk.Tk()
 root.title("Facebook Messenger Bot")
 
-# Domyślne credentiale
-
+# Domyślne dane logowania
 default_username = "example@gmail.com"
 default_password = "MySecurePassword"
 default_message_text = "Hello, this is a test message."
 default_url = "https://www.facebook.com/groups/123456789/people"
 
-# Etykiety i pola tekstowe
-ttk.Label(root, text="Email:").grid(row=0, column=0, padx=10, pady=5)
-email_entry = ttk.Entry(root, width=40)
-email_entry.insert(0, default_username)
-email_entry.grid(row=0, column=1, padx=10, pady=5)
+# Główna ramka
+main_frame = ttk.Frame(root, padding=10)
+main_frame.pack(fill="both", expand=True)
 
-ttk.Label(root, text="Password:").grid(row=1, column=0, padx=10, pady=5)
-password_entry = ttk.Entry(root, width=40, show="*")
-password_entry.insert(0, default_password)
-password_entry.grid(row=1, column=1, padx=10, pady=5)
-
-ttk.Label(root, text="Message:").grid(row=2, column=0, padx=10, pady=5)
-message_entry = ttk.Entry(root, width=40)
-message_entry.insert(0, default_message_text)
-message_entry.grid(row=2, column=1, padx=10, pady=5)
-
-ttk.Label(root, text="Group URL:").grid(row=3, column=0, padx=10, pady=5)
-url_entry = ttk.Entry(root, width=40)
+# Etykiety i pola tekstowe dla wiadomości i URL
+ttk.Label(main_frame, text="Group URL:").grid(row=0, column=0, padx=10, pady=5, sticky="e")
+url_entry = ttk.Entry(main_frame, width=60)
 url_entry.insert(0, default_url)
-url_entry.grid(row=3, column=1, padx=10, pady=5)
+url_entry.grid(row=0, column=1, padx=10, pady=5)
 
+ttk.Label(main_frame, text="Message:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+message_entry = ttk.Entry(main_frame, width=60)
+message_entry.insert(0, default_message_text)
+message_entry.grid(row=1, column=1, padx=10, pady=5)
 
-# Przycisk do uruchamiania bota
+# Przyciski na górze
+buttons_frame = ttk.Frame(main_frame)
+buttons_frame.grid(row=2, column=0, columnspan=2, pady=10)
+
 def run_bot():
-    email = email_entry.get()
-    password = password_entry.get()
-    message = message_entry.get()
-    group_url = url_entry.get()
-    start_bot(email, password, message, group_url)
+    # Placeholder funkcji uruchamiania bota
+    messagebox.showinfo("Bot", "Bot uruchomiony dla podanych kont.")
+    for account in accounts:
+        print(f"Uruchamiam bota dla konta: {account['email']}")
+        # Możesz tutaj dodać logikę start_bot
 
+run_button = ttk.Button(buttons_frame, text="Start Bot", command=run_bot)
+run_button.pack(side="left", padx=10)
 
-run_button = ttk.Button(root, text="Start Bot", command=run_bot)
-run_button.grid(row=4, column=0, columnspan=2, pady=20)
+add_account_button = ttk.Button(buttons_frame, text="Dodaj konto", command=lambda: add_account_frame())
+add_account_button.pack(side="left", padx=10)
+
+# Dynamiczne pola na konta
+dynamic_accounts_frame = ttk.Frame(main_frame)
+dynamic_accounts_frame.grid(row=3, column=0, columnspan=2, pady=20, sticky="nsew")
+
+# Dodaj pierwsze konto z domyślnymi wartościami (nie zapisuje ich automatycznie)
+add_account_frame(default_email=default_username, default_password=default_password)
 
 # Uruchomienie GUI
 root.mainloop()
