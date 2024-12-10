@@ -99,8 +99,10 @@ def fetch_members(driver, group_id):
                 member_href = member.get_attribute("href")
                 if member_href not in members_set:
                     # Usunięcie dodatkowych parametrów w URL
-                    cleaned_url = member_href.split('?')[0]
-                    members_set.add(cleaned_url)
+                    user_index = member_href.find("/user/")
+                    if user_index != -1:
+                        cleaned_url = member_href[:member_href.find("/", user_index + 6) + 1]  # Do drugiego slasha włącznie
+                        members_set.add(cleaned_url)
 
             # Sprawdzenie, czy liczba unikalnych członków wzrosła
             if len(members_set) == previous_count:
