@@ -86,11 +86,12 @@ def navigate_to_group(driver, group_url):
     return group_id
 
 def fetch_members(driver, group_id):
-    # Dynamiczne przewijanie strony
+    """Efektywne pobieranie członków grupy."""
     members_set = set()
     previous_count = 0
-    scroll_attempts = 0  # Licznik przewinięć bez nowych członków
-    max_scroll_attempts = 5  # Maksymalna liczba prób przewinięcia bez znalezienia nowych członków
+    scroll_attempts = 0
+    max_scroll_attempts = 3  # Liczba prób przewinięcia bez nowych członków
+    start_time = time.time()  # Znacznik początkowy
 
     while scroll_attempts < max_scroll_attempts:
         try:
@@ -98,10 +99,9 @@ def fetch_members(driver, group_id):
             for member in members_elements:
                 member_href = member.get_attribute("href")
                 if member_href not in members_set:
-                    # Usunięcie dodatkowych parametrów w URL
                     user_index = member_href.find("/user/")
                     if user_index != -1:
-                        cleaned_url = member_href[:member_href.find("/", user_index + 6) + 1]  # Do drugiego slasha włącznie
+                        cleaned_url = member_href[:member_href.find("/", user_index + 6) + 1]
                         members_set.add(cleaned_url)
 
             # Sprawdzenie, czy liczba unikalnych członków wzrosła
@@ -111,10 +111,17 @@ def fetch_members(driver, group_id):
                 scroll_attempts = 0  # Resetuj licznik, jeśli dodano nowych członków
 
             previous_count = len(members_set)
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(5)
+
+            driver.execute_script("window.scrollBy(0, 800);")  # Przewijaj tylko mały obszar
+            time.sleep(2)  # Zmniejszono czas oczekiwania
+
+            # Oblicz liczbę członków na minutę
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= 60:  # Minuta upłynęła
+                print(f"Pobrano {len(members_set)} członków w ciągu ostatniej minuty.")
+                start_time = time.time()  # Zresetuj znacznik czasu
         except Exception as e:
-            print(f"Błąd podczas przewijania strony lub pobierania członków: {e}")
+            print(f"Błąd podczas przewijania strony: {e}")
             break
 
     print(f"Znaleziono unikalnych członków grupy: {len(members_set)}.")
@@ -122,30 +129,26 @@ def fetch_members(driver, group_id):
     return members_set
 
 def send_message_to_member(driver, member_url, message_text):
-    """Send a message to a single group member."""
-    driver.get(member_url)
-    print("5 sec for debugging")
-    time.sleep(5)
+    """Efektywne wysyłanie wiadomości do członków."""
+    current_url = driver.current_url
+    if current_url != member_url:
+        driver.get(member_url)  # Przejdź tylko, jeśli to konieczne
 
     try:
         current_url = driver.current_url
         if member_url in current_url:
             try:
-                # Sprawdź dostępność przycisku "Wyślij wiadomość"
-                message_button = WebDriverWait(driver, 10).until(
+                message_button = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Wyślij wiadomość')]"))
                 )
                 message_button.click()
-
-                # Wpisz wiadomość w polu tekstowym i wyślij
-                message_box = WebDriverWait(driver, 10).until(
+                message_box = WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
                 )
                 message_box.send_keys(message_text)
                 message_box.send_keys(Keys.RETURN)
 
-                # Zamknij okno wiadomości
-                close_button = WebDriverWait(driver, 10).until(
+                close_button = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Zamknij czat']"))
                 )
                 close_button.click()
