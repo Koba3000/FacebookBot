@@ -124,26 +124,45 @@ def fetch_members(driver, group_id):
 def send_message_to_member(driver, member_url, message_text):
     """Send a message to a single group member."""
     driver.get(member_url)
-    time.sleep(1)
+    print("5 sec for debugging")
+    time.sleep(5)
+
     try:
-        message_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Wyślij wiadomość')]"))
-        )
-        message_button.click()
-        message_box = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
-        )
-        message_box.send_keys(message_text)
-        message_box.send_keys(Keys.RETURN)
-        close_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Zamknij czat']"))
-        )
-        close_button.click()
-        print(f"Wiadomość wysłana do: {member_url}")
-        return True  # Wiadomość została wysłana
+        current_url = driver.current_url
+        if member_url in current_url:
+            try:
+                # Sprawdź dostępność przycisku "Wyślij wiadomość"
+                message_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Wyślij wiadomość')]"))
+                )
+                message_button.click()
+
+                # Wpisz wiadomość w polu tekstowym i wyślij
+                message_box = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
+                )
+                message_box.send_keys(message_text)
+                message_box.send_keys(Keys.RETURN)
+
+                # Zamknij okno wiadomości
+                close_button = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Zamknij czat']"))
+                )
+                close_button.click()
+
+                print(f"Wiadomość wysłana do: {member_url}")
+                return "yes"  # Wiadomość została wysłana
+            except Exception:
+                print(f"Nie udało się znaleźć przycisku 'Wyślij wiadomość': {member_url}")
+                return "private"  # Konto prywatne, brak możliwości wysłania wiadomości
+        else:
+            print(f"URL przeglądarki nie zawiera: {current_url}")
+            return "no"  # Nieprawidłowy URL, wiadomość nie została wysłana
     except Exception as e:
-        print(f"Nie udało się wysłać wiadomości do: {member_url}. Błąd: {e}")
-        return False # Wiadomość nie została wysłana
+        print(f"Błąd podczas przetwarzania URL: {member_url}. Błąd: {e}")
+        return "no"  # Wystąpił błąd, wiadomość nie została wysłana
+
+
 
 
 
@@ -161,19 +180,22 @@ def start_bot(username, password, message_text):
 
         all_sent = True
         for member_url, status in members_status.items():
-            if not status:  # Wysyłaj tylko do członków, którzy jeszcze nie otrzymali wiadomości
+            if status == "no":
                 print(f"Wysyłanie wiadomości do: {member_url}")
-                success = send_message_to_member(driver, member_url, message_text)
-                members_status[member_url] = success  # Zaktualizuj status
-                if not success:
+                result = send_message_to_member(driver, member_url, message_text)
+                members_status[member_url] = result  # Zaktualizuj status
+
+                if result == "no":
+                    print(f"Nie udało się wysłać wiadomości do: {member_url}. Zmiana konta.")
                     all_sent = False
-                    break  # Przerwij, jeśli nie udało się wysłać wiadomości
+                    break
 
         driver.quit()
         return all_sent  # Zwróć True, jeśli wszystkie wiadomości zostały wysłane
     except Exception as e:
         print(f"Błąd podczas pracy z kontem {username}: {e}")
         return False
+
 
 
 
@@ -256,7 +278,7 @@ def run_bot():
     members = fetch_members(driver, group_id)
 
     # Inicjalizacja statusów wiadomości
-    members_status = {member: False for member in members}
+    members_status = {member: "no" for member in members}
 
     driver.quit()
 
@@ -269,6 +291,11 @@ def run_bot():
             break
     else:
         print("Nie udało się wysłać wszystkich wiadomości.")
+
+    # Wyświetlenie podsumowania statusów użytkowników
+    print("\nPodsumowanie statusów użytkowników:")
+    for member_url, status in members_status.items():
+        print(f"Użytkownik: {member_url}, Status: {status}")
 
 
 run_button = ttk.Button(buttons_frame, text="Start Bot", command=run_bot)
