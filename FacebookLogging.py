@@ -12,7 +12,7 @@ from selenium.webdriver.chrome.options import Options
 import time
 
 # Globalna tablica na credentials
-accounts = []
+bot_accounts = []
 
 def validate_input(username, password, group_url):
     """Validate user input."""
@@ -148,48 +148,33 @@ def send_message_to_member(driver, member_url, message_text):
 
 
 
-def start_bot(username, password, message_text, group_url):
-    """Main function to start the bot."""
+def start_bot(username, password, message_text):
+    """Main function to start the bot for a single account."""
+    global members_status  # Słownik wyników wysyłania wiadomości
     try:
-        # Weryfikacja danych wejściowych
-        validate_input(username, password, group_url)
-
         # Konfiguracja przeglądarki
         driver = setup_driver()
 
         # Logowanie do Facebooka
         login(driver, username, password)
-
-        # Sprawdzenie dwuetapowej weryfikacji
         check_authentication(driver)
 
-        # Przejście do grupy i pobranie ID grupy
-        group_id = navigate_to_group(driver, group_url)
-
-        # Pobranie członków grupy
-        members = fetch_members(driver, group_id)
-
-        # Słownik do przechowywania wyników wysyłania wiadomości
-        members_status = {}
-
-        print(f"\nRozpoczynam wysyłanie wiadomości do {len(members)} członków...")
-
-        # Iteracja po członkach grupy i wysyłanie wiadomości
-        for member_url in members:
-            members_status[member_url] = send_message_to_member(driver, member_url, message_text)  # Klucz: URL, Wartość: True/False
-
-        # Wyświetlenie podsumowania
-        print("\nPodsumowanie wysyłania wiadomości:")
+        all_sent = True
         for member_url, status in members_status.items():
-            print(f"{member_url}: {'Wysłano' if status else 'Nie wysłano'}")
+            if not status:  # Wysyłaj tylko do członków, którzy jeszcze nie otrzymali wiadomości
+                print(f"Wysyłanie wiadomości do: {member_url}")
+                success = send_message_to_member(driver, member_url, message_text)
+                members_status[member_url] = success  # Zaktualizuj status
+                if not success:
+                    all_sent = False
+                    break  # Przerwij, jeśli nie udało się wysłać wiadomości
 
-        # Zamknięcie przeglądarki
         driver.quit()
-
-        print("\nBot zakończył pracę pomyślnie.")
-        return members_status  # Zwrócenie słownika wyników
+        return all_sent  # Zwróć True, jeśli wszystkie wiadomości zostały wysłane
     except Exception as e:
-        print(f"Błąd: {e}")
+        print(f"Błąd podczas pracy z kontem {username}: {e}")
+        return False
+
 
 
 def add_account_frame(default_email=None, default_password=None):
@@ -214,7 +199,7 @@ def add_account_frame(default_email=None, default_password=None):
         email = email_entry.get()
         password = password_entry.get()
         if email and password:
-            accounts.append({'email': email, 'password': password})
+            bot_accounts.append({'email': email, 'password': password})
             email_entry.config(state="disabled")
             password_entry.config(state="disabled")
             save_button.config(state="disabled")
@@ -255,11 +240,36 @@ buttons_frame = ttk.Frame(main_frame)
 buttons_frame.grid(row=2, column=0, columnspan=2, pady=10)
 
 def run_bot():
-    # Placeholder funkcji uruchamiania bota
-    messagebox.showinfo("Bot", "Bot uruchomiony dla podanych kont.")
-    for account in accounts:
-        print(f"Uruchamiam bota dla konta: {account['email']}")
-        # Możesz tutaj dodać logikę start_bot
+    """Uruchomienie bota dla wszystkich kont."""
+    global members_status
+    message_text = message_entry.get()
+    group_url = url_entry.get()
+
+    # Pobierz członków grupy tylko raz przy użyciu pierwszego konta
+    first_account = bot_accounts[0]
+    print(f"Uruchamiam bota dla pierwszego konta: {first_account['email']}")
+
+    driver = setup_driver()
+    login(driver, first_account['email'], first_account['password'])
+    check_authentication(driver)
+    group_id = navigate_to_group(driver, group_url)
+    members = fetch_members(driver, group_id)
+
+    # Inicjalizacja statusów wiadomości
+    members_status = {member: False for member in members}
+
+    driver.quit()
+
+    # Próbuj wysyłać wiadomości przy użyciu kolejnych kont, aż wszystkie zostaną wysłane
+    for account in bot_accounts:
+        print(f"Próba wysyłania wiadomości z konta: {account['email']}")
+        all_sent = start_bot(account['email'], account['password'], message_text)
+        if all_sent:  # Jeśli wszystkie wiadomości zostały wysłane, przerwij pętlę
+            print("Wszystkie wiadomości zostały wysłane.")
+            break
+    else:
+        print("Nie udało się wysłać wszystkich wiadomości.")
+
 
 run_button = ttk.Button(buttons_frame, text="Start Bot", command=run_bot)
 run_button.pack(side="left", padx=10)
