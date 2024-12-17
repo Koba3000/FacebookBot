@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import filedialog
 
 from selenium.common import TimeoutException
 from selenium.webdriver.common.by import By
@@ -15,6 +16,9 @@ import time
 
 # Globalna tablica na credentials
 bot_accounts = []
+
+# Globalny słownik statusów wiadomości
+members_status = {}
 
 
 def validate_input(username, password, group_url):
@@ -116,8 +120,6 @@ def fetch_members(driver, group_id):
 
     print("Rozpoczynam pobieranie członków grupy...")
 
-    # for tests TODO
-    # while scroll_attempts < max_scroll_attempts and len(members_set) < 50:
     while scroll_attempts < max_scroll_attempts:
         try:
             # Pobierz elementy z linkami do profili członków
@@ -205,8 +207,6 @@ def send_message_to_member(driver, member_url, message_text):
 def start_bot(username, password, message_text):
     """Main function to start the bot for a single account."""
 
-    global members_status  # Słownik wyników wysyłania wiadomości
-
     try:
         # Konfiguracja przeglądarki
         driver = setup_driver()
@@ -232,8 +232,6 @@ def start_bot(username, password, message_text):
     except Exception as e:
         print(f"Błąd podczas pracy z kontem {username}: {e}")
         return False
-
-
 
 
 def add_account_frame(default_email=None, default_password=None):
@@ -269,15 +267,67 @@ def add_account_frame(default_email=None, default_password=None):
     save_button.grid(row=0, column=4, padx=5, pady=5)
 
 
+def save_results_to_file(output_file):
+    """Zapisuje listę członków i ich statusów do pliku tekstowego."""
+    try:
+        with open(output_file, 'w', encoding='utf-8') as file:
+            for member_url, status in members_status.items():
+                file.write(f"{member_url}, {status}\n")
+        print(f"Wyniki zostały zapisane do pliku: {output_file}")
+    except Exception as e:
+        print(f"Błąd podczas zapisu do pliku: {e}")
+
+
+def import_users_from_file():
+    """Importuje bazę userów z pliku tekstowego."""
+    file_path = filedialog.askopenfilename(
+        title="Wybierz plik z bazą userów",
+        filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+    )
+
+    if not file_path:
+        print("Import anulowany przez użytkownika.")
+        return
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file.readlines():
+                parts = line.strip().split(", ")
+                if len(parts) == 2:
+                    url, status = parts
+                    members_status[url] = status  # Dodanie do globalnego słownika
+        print(f"Zaimportowano bazę userów z pliku: {file_path}")
+    except Exception as e:
+        print(f"Błąd podczas importu pliku: {e}")
+
+
+def update_members_status(members):
+    """Aktualizuje słownik members_status nowymi adresami URL."""
+    new_users = 0
+    repeated_users = 0
+
+    for member in members:
+        if member not in members_status:
+            members_status[member] = "no"  # Dodaj nowy URL ze statusem "no"
+            new_users += 1
+        else:
+            repeated_users += 1
+
+    # Podsumowanie wyników
+    print(f"\nPodsumowanie aktualizacji:")
+    print(f"Dodano nowych użytkowników: {new_users}")
+    print(f"Powtórzonych użytkowników: {repeated_users}")
+
+
 # GUI główne
 root = tk.Tk()
 root.title("Facebook Messenger Bot")
 
 # Domyślne dane logowania
-default_username = "example@gmail.com"
-default_password = "MySecurePassword"
+default_username = "hagiewu@o2.pl"
+default_password = "haslo123!maslosloma"
 default_message_text = "Hello, this is a test message."
-default_url = "https://www.facebook.com/groups/123456789/people"
+default_url = "https://www.facebook.com/groups/1086154519630858"
 
 # Główna ramka
 main_frame = ttk.Frame(root, padding=10)
@@ -300,7 +350,15 @@ buttons_frame.grid(row=2, column=0, columnspan=2, pady=10)
 
 def run_bot():
     """Uruchomienie bota dla wszystkich kont."""
-    global members_status
+
+    # Wywołanie okienka dialogowego do podania nazwy pliku
+    file_path = filedialog.asksaveasfilename(
+        defaultextension=".txt",
+        filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        title="Wybierz plik do zapisu wyników",
+        initialfile="output.txt"
+    )
+
     message_text = message_entry.get()
     group_url = url_entry.get()
 
@@ -314,8 +372,7 @@ def run_bot():
     group_id = navigate_to_group(driver, group_url)
     members = fetch_members(driver, group_id)
 
-    # Inicjalizacja statusów wiadomości
-    members_status = {member: "no" for member in members}
+    update_members_status(members)
 
     driver.quit()
 
@@ -334,12 +391,22 @@ def run_bot():
     for member_url, status in members_status.items():
         print(f"Użytkownik: {member_url}, Status: {status}")
 
+    if file_path:  # Jeśli użytkownik wybrał plik
+        save_results_to_file(file_path)
+    else:
+        print("Zapis anulowany przez użytkownika.")
+
+
+
 
 run_button = ttk.Button(buttons_frame, text="Start Bot", command=run_bot)
 run_button.pack(side="left", padx=10)
 
 add_account_button = ttk.Button(buttons_frame, text="Dodaj konto", command=lambda: add_account_frame())
 add_account_button.pack(side="left", padx=10)
+
+import_button = ttk.Button(buttons_frame, text="Importuj bazę użytkowników", command=import_users_from_file)
+import_button.pack(side="left", padx=10)
 
 # Dynamiczne pola na konta
 dynamic_accounts_frame = ttk.Frame(main_frame)
