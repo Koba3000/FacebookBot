@@ -1,5 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import filedialog
+
+from selenium.common import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -13,6 +16,10 @@ import time
 
 # Globalna tablica na credentials
 bot_accounts = []
+
+# Globalny słownik statusów wiadomości
+members_status = {}
+
 
 def validate_input(username, password, group_url):
     """Validate user input."""
@@ -30,26 +37,41 @@ def setup_driver():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
+
 def login(driver, username, password):
     """Login to Facebook."""
     try:
         driver.get("https://www.facebook.com/")
-        time.sleep(1)
-    except Exception as e:
-        raise RuntimeError(f"Nie udało się otworzyć strony Facebooka: {e}")
+
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, "email"))
+        )
+    except TimeoutException:
+        raise RuntimeError("Strona Facebooka nie załadowała się poprawnie.")
 
     # Logowanie
-    username_field = driver.find_element(By.ID, "email")
-    password_field = driver.find_element(By.ID, "pass")
-    username_field.send_keys(username)
-    password_field.send_keys(password)
+    try:
+        username_field = driver.find_element(By.ID, "email")
+        password_field = driver.find_element(By.ID, "pass")
+        username_field.send_keys(username)
+        password_field.send_keys(password)
 
-    # Zaloguj się
-    password_field.send_keys(Keys.RETURN)
-    time.sleep(3)
+        # Zaloguj się
+        password_field.send_keys(Keys.RETURN)
 
-    if "login" in driver.current_url:
-        raise RuntimeError("Nie udało się zalogować. Sprawdź poprawność danych logowania.")
+        # Oczekiwanie na przekierowanie i załadowanie strony po zalogowaniu
+        WebDriverWait(driver, 10).until(
+            EC.url_contains("facebook.com")
+        )
+
+        # Sprawdzenie, czy jesteśmy zalogowani
+        if "login" in driver.current_url:
+            raise RuntimeError("Nie udało się zalogować. Sprawdź poprawność danych logowania.")
+    except TimeoutException:
+        raise RuntimeError("Czas oczekiwania na zalogowanie upłynął.")
+    except Exception as e:
+        raise RuntimeError(f"Błąd podczas logowania: {e}")
+
 
 def check_authentication(driver):
     """Check if authentication is required."""
@@ -57,11 +79,12 @@ def check_authentication(driver):
         print("Weryfikacja wykryta. Zamrażanie bota na minutę...")
         time.sleep(60)
 
+
 def navigate_to_group(driver, group_url):
     # Przejście do grupy
     try:
         driver.get(group_url)
-        time.sleep(3)
+        time.sleep(5)
     except Exception as e:
         raise RuntimeError(f"Nie udało się otworzyć URL grupy: {e}")
 
@@ -77,7 +100,9 @@ def navigate_to_group(driver, group_url):
     try:
         members_tab_url = f"https://www.facebook.com/groups/{group_id}/members/"
         driver.get(members_tab_url)
-        time.sleep(5)
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Członkowie')]"))
+        )
         print(f"Przeszedł do zakładki z członkami grupy: {members_tab_url}")
 
     except Exception as e:
@@ -85,48 +110,52 @@ def navigate_to_group(driver, group_url):
 
     return group_id
 
+
 def fetch_members(driver, group_id):
-    """Efektywne pobieranie członków grupy."""
+    """Pobieranie pełnej listy członków grupy."""
     members_set = set()
-    previous_count = 0
+    previous_count = 0  # Liczba znalezionych członków przed przewijaniem
     scroll_attempts = 0
-    max_scroll_attempts = 3  # Liczba prób przewinięcia bez nowych członków
-    start_time = time.time()  # Znacznik początkowy
+    max_scroll_attempts = 10  # Maksymalna liczba prób przewinięcia bez nowych danych
+
+    print("Rozpoczynam pobieranie członków grupy...")
 
     while scroll_attempts < max_scroll_attempts:
         try:
+            # Pobierz elementy z linkami do profili członków
             members_elements = driver.find_elements(By.XPATH, f"//a[contains(@href, '/groups/{group_id}/user/')]")
+
+            # Dodaj linki do zestawu, aby zapewnić unikalność
             for member in members_elements:
                 member_href = member.get_attribute("href")
-                if member_href not in members_set:
-                    user_index = member_href.find("/user/")
-                    if user_index != -1:
-                        cleaned_url = member_href[:member_href.find("/", user_index + 6) + 1]
-                        members_set.add(cleaned_url)
+                if member_href and "/user/" in member_href:
+                    cleaned_url = member_href.split("?")[0]  # Usuń query parameters
+                    members_set.add(cleaned_url)
 
-            # Sprawdzenie, czy liczba unikalnych członków wzrosła
-            if len(members_set) == previous_count:
-                scroll_attempts += 1  # Zwiększ licznik przewinięć bez nowych członków
+            # Sprawdzenie, czy liczba członków wzrosła
+            if len(members_set) > previous_count:
+                print(f"Znaleziono nowych członków: {len(members_set)}")
+                previous_count = len(members_set)
+                scroll_attempts = 0  # Zresetuj licznik prób
             else:
-                scroll_attempts = 0  # Resetuj licznik, jeśli dodano nowych członków
+                scroll_attempts += 1  # Zwiększ licznik prób bez nowych członków
 
-            previous_count = len(members_set)
+            # Przewijaj stronę w dół
+            driver.execute_script("window.scrollBy(0, 1000);")  # Przewinięcie o 1000 pikseli
 
-            driver.execute_script("window.scrollBy(0, 800);")  # Przewijaj tylko mały obszar
-            time.sleep(2)  # Zmniejszono czas oczekiwania
+            # Dynamiczne oczekiwanie na załadowanie nowych danych (maks. 5 sekund)
+            WebDriverWait(driver, 5).until(
+                lambda d: len(driver.find_elements(By.XPATH,
+                                                   f"//a[contains(@href, '/groups/{group_id}/user/')]")) > previous_count
+            )
 
-            # Oblicz liczbę członków na minutę
-            elapsed_time = time.time() - start_time
-            if elapsed_time >= 60:  # Minuta upłynęła
-                print(f"Pobrano {len(members_set)} członków w ciągu ostatniej minuty.")
-                start_time = time.time()  # Zresetuj znacznik czasu
-        except Exception as e:
-            print(f"Błąd podczas przewijania strony: {e}")
-            break
+        except TimeoutException:
+            print("Brak nowych elementów. Przewijanie kontynuowane...")
+            scroll_attempts += 1  # Dodaj próbę przewinięcia
 
-    print(f"Znaleziono unikalnych członków grupy: {len(members_set)}.")
-
+    print(f"Pobieranie zakończone. Łączna liczba członków: {len(members_set)}")
     return members_set
+
 
 def send_message_to_member(driver, member_url, message_text):
     """Efektywne wysyłanie wiadomości do członków."""
@@ -138,20 +167,29 @@ def send_message_to_member(driver, member_url, message_text):
         current_url = driver.current_url
         if member_url in current_url:
             try:
-                message_button = WebDriverWait(driver, 5).until(
+                message_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Wyślij wiadomość')]"))
                 )
                 message_button.click()
-                message_box = WebDriverWait(driver, 5).until(
+
+                # wait for the window to appear
+                WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
                 )
+                print("Okno wiadomości się pojawiło.")
+
+                message_box = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
+                )
+
                 message_box.send_keys(message_text)
                 message_box.send_keys(Keys.RETURN)
 
-                close_button = WebDriverWait(driver, 5).until(
+                close_button = WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Zamknij czat']"))
                 )
                 close_button.click()
+                print("Okno wiadomości zostało zamknięte.")
 
                 print(f"Wiadomość wysłana do: {member_url}")
                 return "yes"  # Wiadomość została wysłana
@@ -166,13 +204,9 @@ def send_message_to_member(driver, member_url, message_text):
         return "no"  # Wystąpił błąd, wiadomość nie została wysłana
 
 
-
-
-
-
 def start_bot(username, password, message_text):
     """Main function to start the bot for a single account."""
-    global members_status  # Słownik wyników wysyłania wiadomości
+
     try:
         # Konfiguracja przeglądarki
         driver = setup_driver()
@@ -198,8 +232,6 @@ def start_bot(username, password, message_text):
     except Exception as e:
         print(f"Błąd podczas pracy z kontem {username}: {e}")
         return False
-
-
 
 
 def add_account_frame(default_email=None, default_password=None):
@@ -235,15 +267,67 @@ def add_account_frame(default_email=None, default_password=None):
     save_button.grid(row=0, column=4, padx=5, pady=5)
 
 
+def save_results_to_file(output_file):
+    """Zapisuje listę członków i ich statusów do pliku tekstowego."""
+    try:
+        with open(output_file, 'w', encoding='utf-8') as file:
+            for member_url, status in members_status.items():
+                file.write(f"{member_url}, {status}\n")
+        print(f"Wyniki zostały zapisane do pliku: {output_file}")
+    except Exception as e:
+        print(f"Błąd podczas zapisu do pliku: {e}")
+
+
+def import_users_from_file():
+    """Importuje bazę userów z pliku tekstowego."""
+    file_path = filedialog.askopenfilename(
+        title="Wybierz plik z bazą userów",
+        filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
+    )
+
+    if not file_path:
+        print("Import anulowany przez użytkownika.")
+        return
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file.readlines():
+                parts = line.strip().split(", ")
+                if len(parts) == 2:
+                    url, status = parts
+                    members_status[url] = status  # Dodanie do globalnego słownika
+        print(f"Zaimportowano bazę userów z pliku: {file_path}")
+    except Exception as e:
+        print(f"Błąd podczas importu pliku: {e}")
+
+
+def update_members_status(members):
+    """Aktualizuje słownik members_status nowymi adresami URL."""
+    new_users = 0
+    repeated_users = 0
+
+    for member in members:
+        if member not in members_status:
+            members_status[member] = "no"  # Dodaj nowy URL ze statusem "no"
+            new_users += 1
+        else:
+            repeated_users += 1
+
+    # Podsumowanie wyników
+    print(f"\nPodsumowanie aktualizacji:")
+    print(f"Dodano nowych użytkowników: {new_users}")
+    print(f"Powtórzonych użytkowników: {repeated_users}")
+
+
 # GUI główne
 root = tk.Tk()
 root.title("Facebook Messenger Bot")
 
 # Domyślne dane logowania
-default_username = "example@gmail.com"
-default_password = "MySecurePassword"
+default_username = "hagiewu@o2.pl"
+default_password = "haslo123!maslosloma"
 default_message_text = "Hello, this is a test message."
-default_url = "https://www.facebook.com/groups/123456789/people"
+default_url = "https://www.facebook.com/groups/1086154519630858"
 
 # Główna ramka
 main_frame = ttk.Frame(root, padding=10)
@@ -266,7 +350,15 @@ buttons_frame.grid(row=2, column=0, columnspan=2, pady=10)
 
 def run_bot():
     """Uruchomienie bota dla wszystkich kont."""
-    global members_status
+
+    # Wywołanie okienka dialogowego do podania nazwy pliku
+    file_path = filedialog.asksaveasfilename(
+        defaultextension=".txt",
+        filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
+        title="Wybierz plik do zapisu wyników",
+        initialfile="output.txt"
+    )
+
     message_text = message_entry.get()
     group_url = url_entry.get()
 
@@ -280,8 +372,7 @@ def run_bot():
     group_id = navigate_to_group(driver, group_url)
     members = fetch_members(driver, group_id)
 
-    # Inicjalizacja statusów wiadomości
-    members_status = {member: "no" for member in members}
+    update_members_status(members)
 
     driver.quit()
 
@@ -300,12 +391,22 @@ def run_bot():
     for member_url, status in members_status.items():
         print(f"Użytkownik: {member_url}, Status: {status}")
 
+    if file_path:  # Jeśli użytkownik wybrał plik
+        save_results_to_file(file_path)
+    else:
+        print("Zapis anulowany przez użytkownika.")
+
+
+
 
 run_button = ttk.Button(buttons_frame, text="Start Bot", command=run_bot)
 run_button.pack(side="left", padx=10)
 
 add_account_button = ttk.Button(buttons_frame, text="Dodaj konto", command=lambda: add_account_frame())
 add_account_button.pack(side="left", padx=10)
+
+import_button = ttk.Button(buttons_frame, text="Importuj bazę użytkowników", command=import_users_from_file)
+import_button.pack(side="left", padx=10)
 
 # Dynamiczne pola na konta
 dynamic_accounts_frame = ttk.Frame(main_frame)
