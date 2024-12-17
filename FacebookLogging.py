@@ -323,11 +323,10 @@ def update_members_status(members):
 root = tk.Tk()
 root.title("Facebook Messenger Bot")
 
-# Domyślne dane logowania
-default_username = "hagiewu@o2.pl"
-default_password = "haslo123!maslosloma"
+default_username = "example@gmail.com"
+default_password = "MySecurePassword"
 default_message_text = "Hello, this is a test message."
-default_url = "https://www.facebook.com/groups/1086154519630858"
+default_url = "https://www.facebook.com/groups/123456789/people"
 
 # Główna ramka
 main_frame = ttk.Frame(root, padding=10)
