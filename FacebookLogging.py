@@ -173,13 +173,8 @@ def send_message_to_member(driver, member_url, message_text):
                 message_button.click()
 
                 # wait for the window to appear
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
-                )
-                print("Okno wiadomości się pojawiło.")
-
                 message_box = WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
+                    EC.element_to_be_clickable((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
                 )
 
                 message_box.send_keys(message_text)
