@@ -12,6 +12,7 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 
+import os
 import time
 
 # Globalna tablica na credentials
@@ -167,20 +168,20 @@ def send_message_to_member(driver, member_url, message_text):
         current_url = driver.current_url
         if member_url in current_url:
             try:
-                message_button = WebDriverWait(driver, 10).until(
+                message_button = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, "//span[contains(text(), 'Wyślij wiadomość')]"))
                 )
                 message_button.click()
 
                 # wait for the window to appear
-                message_box = WebDriverWait(driver, 10).until(
+                message_box = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, "//div[@aria-placeholder='Aa']//p"))
                 )
 
                 message_box.send_keys(message_text)
                 message_box.send_keys(Keys.RETURN)
 
-                close_button = WebDriverWait(driver, 10).until(
+                close_button = WebDriverWait(driver, 5).until(
                     EC.element_to_be_clickable((By.XPATH, "//div[@aria-label='Zamknij czat']"))
                 )
                 close_button.click()
@@ -193,10 +194,10 @@ def send_message_to_member(driver, member_url, message_text):
                 return "private"  # Konto prywatne, brak możliwości wysłania wiadomości
         else:
             print(f"URL przeglądarki nie zawiera: {current_url}")
-            return "no"  # Nieprawidłowy URL, wiadomość nie została wysłana
+            return "no"
     except Exception as e:
         print(f"Błąd podczas przetwarzania URL: {member_url}. Błąd: {e}")
-        return "no"  # Wystąpił błąd, wiadomość nie została wysłana
+        return "no"
 
 
 def start_bot(username, password, message_text):
@@ -262,8 +263,10 @@ def add_account_frame(default_email=None, default_password=None):
     save_button.grid(row=0, column=4, padx=5, pady=5)
 
 
-def save_results_to_file(output_file):
+def save_results_to_file():
     """Zapisuje listę członków i ich statusów do pliku tekstowego."""
+    output_file = os.path.join(os.getcwd(), "output.txt")
+
     try:
         with open(output_file, 'w', encoding='utf-8') as file:
             for member_url, status in members_status.items():
@@ -273,15 +276,12 @@ def save_results_to_file(output_file):
         print(f"Błąd podczas zapisu do pliku: {e}")
 
 
-def import_users_from_file():
+def import_users():
     """Importuje bazę userów z pliku tekstowego."""
-    file_path = filedialog.askopenfilename(
-        title="Wybierz plik z bazą userów",
-        filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-    )
+    file_path = os.path.join(os.getcwd(), "output.txt")
 
-    if not file_path:
-        print("Import anulowany przez użytkownika.")
+    if not os.path.exists(file_path):
+        print("Jeszcze nie powstał output.txt - pierwsze uruchomienie skryptu")
         return
 
     try:
@@ -301,17 +301,42 @@ def update_members_status(members):
     new_users = 0
     repeated_users = 0
 
-    for member in members:
-        if member not in members_status:
-            members_status[member] = "no"  # Dodaj nowy URL ze statusem "no"
+    for member_url in members:
+        if not is_user_in_members_status(member_url):
+            members_status[member_url] = "no"
             new_users += 1
         else:
             repeated_users += 1
 
-    # Podsumowanie wyników
     print(f"\nPodsumowanie aktualizacji:")
     print(f"Dodano nowych użytkowników: {new_users}")
     print(f"Powtórzonych użytkowników: {repeated_users}")
+
+
+def is_user_in_members_status(member_url):
+    """
+    Sprawdza, czy ID użytkownika na 7 pozycji w URL istnieje w słowniku members_status.
+    """
+    try:
+        # Usuń końcowy ukośnik i podziel URL na części
+        parts = member_url.rstrip('/').split('/')
+
+        # Upewnij się, że URL zawiera co najmniej 8 elementów
+        if len(parts) >= 7:
+            user_id = parts[6]  # Wyciągnij ID użytkownika z 7 pozycji
+        else:
+            print(f"Nieprawidłowy format URL: {member_url}")
+            return False
+
+        # Sprawdź, czy ID użytkownika istnieje już w members_status
+        for existing_url in members_status.keys():
+            existing_parts = existing_url.rstrip('/').split('/')
+            if len(existing_parts) >= 7 and user_id == existing_parts[6]:
+                return True  # ID użytkownika istnieje w members_status
+        return False  # ID użytkownika nie znaleziono
+    except Exception as e:
+        print(f"Błąd podczas sprawdzania URL-a: {member_url}. Szczegóły: {e}")
+        return False
 
 
 # GUI główne
@@ -345,14 +370,6 @@ buttons_frame.grid(row=2, column=0, columnspan=2, pady=10)
 def run_bot():
     """Uruchomienie bota dla wszystkich kont."""
 
-    # Wywołanie okienka dialogowego do podania nazwy pliku
-    file_path = filedialog.asksaveasfilename(
-        defaultextension=".txt",
-        filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-        title="Wybierz plik do zapisu wyników",
-        initialfile="output.txt"
-    )
-
     message_text = message_entry.get()
     group_url = url_entry.get()
 
@@ -364,8 +381,9 @@ def run_bot():
     login(driver, first_account['email'], first_account['password'])
     check_authentication(driver)
     group_id = navigate_to_group(driver, group_url)
-    members = fetch_members(driver, group_id)
 
+    import_users()
+    members = fetch_members(driver, group_id)
     update_members_status(members)
 
     driver.quit()
@@ -385,10 +403,7 @@ def run_bot():
     for member_url, status in members_status.items():
         print(f"Użytkownik: {member_url}, Status: {status}")
 
-    if file_path:  # Jeśli użytkownik wybrał plik
-        save_results_to_file(file_path)
-    else:
-        print("Zapis anulowany przez użytkownika.")
+    save_results_to_file()
 
 
 
@@ -398,9 +413,6 @@ run_button.pack(side="left", padx=10)
 
 add_account_button = ttk.Button(buttons_frame, text="Dodaj konto", command=lambda: add_account_frame())
 add_account_button.pack(side="left", padx=10)
-
-import_button = ttk.Button(buttons_frame, text="Importuj bazę użytkowników", command=import_users_from_file)
-import_button.pack(side="left", padx=10)
 
 # Dynamiczne pola na konta
 dynamic_accounts_frame = ttk.Frame(main_frame)
